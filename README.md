@@ -1,5 +1,6 @@
-# DL + Blockchain Pipeline for Diabetic Retinopathy Early Diagnosis
+# DR-Blockchain-PoC
 
+## Diabetic Retinopathy Early Diagnosis — Deep Learning + Blockchain Pipeline
 This repository contains an internship project integrating Deep Learning and Blockchain technology for secure, automated diagnosis of Diabetic Retinopathy (DR). A fine-tuned EfficientNetB3 model classifies retinal images by DR severity, while an Ethereum smart contract maintains a tamper-proof, access-controlled ledger of diagnosis records.
 
 ---
