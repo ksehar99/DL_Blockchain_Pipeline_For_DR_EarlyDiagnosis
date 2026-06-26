@@ -1,16 +1,16 @@
 # DL + Blockchain Pipeline for Diabetic Retinopathy Early Diagnosis
 
-This repository contains the ongoing development of an internship project that integrates Deep Learning and Blockchain technology for the secure and automated diagnosis of Diabetic Retinopathy (DR). The goal is to use a Deep Learning model for multi-class retinal image classification and an Ethereum smart contract to maintain a tamper-proof, access-controlled ledger of diagnosis records.
+This repository contains an internship project integrating Deep Learning and Blockchain technology for secure, automated diagnosis of Diabetic Retinopathy (DR). A fine-tuned EfficientNetB3 model classifies retinal images by DR severity, while an Ethereum smart contract maintains a tamper-proof, access-controlled ledger of diagnosis records.
 
 ---
 
 ## Current Implementation Status
 
 ### 1. Deep Learning Model
-- **Environment & Dataset:** Developed using Google Colab with GPU acceleration on the APTOS 2019 dataset (2,930 training images across 5 DR severity classes: No DR, Mild, Moderate, Severe, Proliferative).
-- **Class Imbalance Handling:** Applied targeted augmentation on minority classes (Mild, Severe, Proliferative) to balance the dataset to ~600 samples per class. Custom class weights were also applied to prioritize early-stage and severe DR detection.
-- **Architecture:** Transfer learning using EfficientNetB3 pretrained on ImageNet, with fine-tuning of the last 30 layers. Custom classification head: GlobalAveragePooling2D → Dropout(0.3) → Dense(5, softmax).
-- **Training:** Adam optimizer, sparse categorical crossentropy loss, EarlyStopping with patience=5. Model saved to Google Drive.
+- **Environment & Dataset:** Developed on Google Colab (GPU) using the APTOS 2019 dataset — 2,930 training images across 5 DR severity classes: No DR, Mild, Moderate, Severe, Proliferative.
+- **Class Imbalance Handling:** Targeted augmentation applied to minority classes (Mild, Severe, Proliferative) to reach ~600 samples per class. Custom class weights further prioritize early-stage DR detection.
+- **Architecture:** Transfer learning on EfficientNetB3 (ImageNet pretrained), fine-tuned on the last 30 layers. Classification head: GlobalAveragePooling2D → Dropout(0.3) → Dense(5, softmax).
+- **Training:** Two-phase training — Phase 1 trains the head only; Phase 2 fine-tunes the last 30 base layers at a lower learning rate (1e-5). Adam optimizer, sparse categorical crossentropy, EarlyStopping (patience=5), ReduceLROnPlateau.
 - **Evaluation Results (Validation Set — 586 images):**
 
 | Class | Precision | Recall | F1-Score |
@@ -24,30 +24,43 @@ This repository contains the ongoing development of an internship project that i
 
 ### 2. Smart Contract
 - **Contract Name:** `DRDiagnosisResuls` — deployed on Sepolia testnet.
-- **Core Structures:** Implements `Patient` registry and `Diagnosis` records containing cryptographic image hashes (`bytes32`) and multi-class DR category (`uint`).
+- **Core Structures:** `Patient` registry and `Diagnosis` records storing cryptographic image hashes (`bytes32`) and predicted DR severity class (`uint`).
 - **Access Control:**
-  - `onlyOwner` modifier ensures only the hospital admin can register patients and assign doctors.
-  - `uploadDiagnosis` restricts diagnosis uploads exclusively to the doctor assigned to that patient.
-  - `viewRecords` allows the admin and assigned doctor to query historical diagnosis records.
-  - Duplicate patient registration prevented via timestamp-based existence check.
-- **Events:** `PatientRegistered` and `DiagnosisUploaded` emitted for on-chain activity tracking.
+  - `onlyOwner` modifier restricts patient registration to the hospital admin.
+  - `uploadDiagnosis` restricts uploads to the doctor assigned to that specific patient.
+  - `viewRecords` is accessible only to the admin or the patient's assigned doctor.
+  - Duplicate registration prevented via timestamp-based existence check.
+- **Events:** `PatientRegistered` and `DiagnosisUploaded` emitted for transparent on-chain activity logging.
 
 ### 3. Python-Blockchain Bridge
-- **Web3.py Integration:** Connected to Sepolia testnet via Alchemy RPC endpoint.
-- **Patient Registration:** Automated pipeline — generates synthetic patient profiles using Faker, persists records to JSON, and registers patients on-chain via smart contract.
+- **Web3.py Integration:** Connected to Sepolia testnet via Alchemy RPC. Transactions are signed programmatically using the owner's private key — no MetaMask interaction required.
+- **Patient Registration:** Synthetic patient profiles generated via Faker, persisted to a JSON store on Google Drive, and registered on-chain via the smart contract.
+- **Diagnosis Upload:** Model inference runs on a randomly selected test image. The SHA-256 hash of the image and the predicted DR class (0–4) are uploaded on-chain via `uploadDiagnosis`.
+- **Verification:** `verify_diagnosis` recomputes the image hash locally and compares it against the on-chain record — a mismatch flags potential data tampering.
+- **Record Retrieval:** `view_records` and `view_patients` fetch on-chain data and enrich it with doctor and patient names from the local JSON store.
 
 ---
 
 ## Repository Structure
-- `DR-Diagnosis.sol` — Solidity smart contract managing patient registry, diagnosis records, and access control.
-- `Copy_of_DR_DL_training.ipynb` — Jupyter Notebook covering data preprocessing, augmentation, model training, and evaluation.
-- `DR_Blockchain_Web3.ipynb` — Jupyter Notebook covering Web3.py integration, patient registration pipeline, and blockchain interaction with the deployed smart contract.
+- `DR-Diagnosis.sol` — Solidity smart contract: patient registry, diagnosis records, access control.
+- `Copy_of_DR_DL_training.ipynb` — Data preprocessing, augmentation, two-phase model training, and evaluation.
+- `DR_Blockchain_Web3.ipynb` — Web3.py pipeline: patient registration, diagnosis upload, record retrieval, and tamper verification.
+
+---
+
+## Limitations
+- **Doctor Authentication:** In this PoC, the hospital admin and doctor share the same wallet address. In production, each doctor would hold a separate wallet with their own private key.
+- **Patient Privacy:** Patient data is stored in a local JSON file. A production system would require an encrypted database with blockchain-enforced access control at the API layer.
+- **Model Recall on Severe Classes:** Recall for Severe (0.17) and Proliferative (0.29) DR is low — these are the most dangerous cases to miss. Further fine-tuning or focal loss is needed.
+- **Data Persistence:** Google Colab sessions reset and clear `/content/`. The dataset and JSON store are on Drive, but the session must be re-initialized on each run.
+- **Testnet Only:** The contract is deployed on Sepolia testnet. Mainnet deployment would require a full security audit, gas optimization, and HIPAA/GDPR compliance review.
+- **No Frontend:** The pipeline is entirely script-based. A web interface would be needed for clinical use.
 
 ---
 
 ## Next Steps
-- **Diagnosis Upload:** Integrate model inference with `uploadDiagnosis` — compute `keccak256` hash of retinal image, run classification, and log result on-chain.
-- **End-to-End Pipeline:** Connect full flow — test image input → model prediction → hash generation → blockchain upload → on-chain verification.
-- **Persistent Storage:** Move JSON patient store and dataset to Google Drive to survive Colab session resets.
-- **Model Improvement:** Improve recall for Severe (0.17) and Proliferative (0.29) classes through further fine-tuning.
-- **Validation:** End-to-end testing with mock patient profiles to verify access control, record retrieval, and tamper detection.
+- **Model Improvement:** Address low recall on Severe and Proliferative classes via focal loss, additional data, or class-specific fine-tuning.
+- **Doctor Wallets:** Assign separate wallets per doctor and manage their private keys securely.
+- **Database Layer:** Replace JSON with an encrypted database (e.g. MongoDB) with SC-enforced access control via a Python middleware layer.
+- **IPFS Integration:** Store retinal images on IPFS and log the CID on-chain instead of a local hash — enabling decentralized, verifiable image storage.
+- **Frontend:** Build a minimal web interface for patient registration, diagnosis upload, and record retrieval.
